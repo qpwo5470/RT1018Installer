@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# PyInstaller
+build/
+dist/
+*.spec.pyc
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Backups (exclude from git, these are user-generated)
+backups/
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# Large media files (too big for GitHub)
+*.mp4
+*.avi
+*.mov
+*.mkv
+
+# Old setting-windows folder (legacy)
+setting-windows/
+tmpclaude-*

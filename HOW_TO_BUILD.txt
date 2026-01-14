@@ -1,0 +1,74 @@
+========================================
+RT1018 INSTALLER - HOW TO BUILD EXE
+========================================
+
+QUICK BUILD (One Command):
+--------------------------
+
+    python build_exe.py
+
+
+That's it! The script will:
+1. Install PyInstaller if needed
+2. Clean old build files
+3. Build the executable
+4. Show you where the .exe is created
+
+
+RESULT:
+-------
+
+    dist/RT1018_Installer.exe
+
+This is a standalone executable that:
+- Doesn't require Python to be installed
+- Can be copied anywhere
+- Can be shared with anyone
+- Still needs ADB and Scrcpy to work
+
+
+DISTRIBUTION:
+-------------
+
+To distribute to others, package these together:
+
+    RT1018_Installer.exe          (from dist/ folder)
+    setting-windows/              (must include this!)
+    README.md
+    QUICK_START.md
+
+
+REQUIREMENTS FOR USERS:
+-----------------------
+
+Users of the .exe still need:
+1. ADB (Android Platform Tools) - in PATH
+2. Scrcpy (optional) - for screen mirroring
+
+
+TROUBLESHOOTING:
+----------------
+
+If build fails:
+1. Install PyInstaller manually:
+   pip install pyinstaller
+
+2. Run build again:
+   python build_exe.py
+
+
+If .exe won't run:
+1. Make sure setting-windows/ folder exists
+2. Make sure ADB is installed
+3. Check antivirus (may block PyInstaller exes)
+
+
+FULL DOCUMENTATION:
+-------------------
+
+See BUILD.md for detailed build options and customization.
+
+
+========================================
+That's all you need to know!
+========================================

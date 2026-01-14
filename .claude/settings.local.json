@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir /s /b C:Usersqpwo5PycharmProjectsRT1018Installersetting-windowssetting-windowsfiles_to_install 2)",
+      "Bash(nul)",
+      "Bash(python -m py_compile:*)",
+      "Bash(python -c:*)",
+      "Bash(dir:*)",
+      "Bash(tree:*)",
+      "Bash(python -m PyInstaller:*)",
+      "Bash(du:*)",
+      "Bash(taskkill:*)",
+      "Bash(C:/Users/qpwo5/PycharmProjects/RT1018Installer/adb/scrcpy.exe:*)",
+      "Bash(C:/Users/qpwo5/PycharmProjects/RT1018Installer/adb/adb.exe version:*)",
+      "WebSearch",
+      "Bash(curl:*)",
+      "Bash(unzip:*)",
+      "Bash(C:/Users/qpwo5/PycharmProjects/RT1018Installer/temp_platform_tools/platform-tools/adb.exe version)",
+      "Bash(C:/Users/qpwo5/PycharmProjects/RT1018Installer/dist/adb/adb.exe version:*)",
+      "Bash(powershell -Command \"\\(Get-Item ''C:\\\\Users\\\\qpwo5\\\\PycharmProjects\\\\RT1018Installer\\\\dist\\\\RT1018_Installer.exe''\\).Length / 1MB\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
