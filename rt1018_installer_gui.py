@@ -13,6 +13,7 @@ import sys
 import threading
 import time
 import tkinter as tk
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from tkinter import ttk, scrolledtext, messagebox, filedialog
@@ -341,14 +342,18 @@ class RT1018InstallerGUI:
             self.ip_range_var.set("192.168.1")
 
     def scan_network(self):
-        """Scan the network for Android devices on ports 5555 and 1206"""
+        """Scan the network for Android devices on ports 5555 and 1206 using multithreading"""
         if self.scanning:
             return
 
         self.scanning = True
-        self.scan_btn.config(state=tk.DISABLED)
+        # Disable all buttons during scan
+        self.scan_btn.config(state=tk.DISABLED, text="스캔 중...")
+        self.detect_btn.config(state=tk.DISABLED)
+        self.install_btn.config(state=tk.DISABLED)
+        self.backup_btn.config(state=tk.DISABLED)
         self.scan_progress.start()
-        self.log("네트워크 스캔 시작...")
+        self.log("네트워크 스캔 시작... (멀티스레드)")
 
         # Clear existing devices
         for widget in self.device_list_frame.winfo_children():
@@ -356,90 +361,105 @@ class RT1018InstallerGUI:
         self.devices.clear()
         self.device_vars.clear()
 
+        def scan_single_ip(ip, ports):
+            """Scan a single IP for open ports"""
+            results = []
+            for port in ports:
+                try:
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(0.1)
+                    result = sock.connect_ex((ip, port))
+                    sock.close()
+                    if result == 0:
+                        results.append((ip, port))
+                except Exception:
+                    pass
+            return results
+
+        def connect_device(ip, port, adb_exe):
+            """Connect to a device and get its info"""
+            try:
+                result = subprocess.run(
+                    [adb_exe, "connect", f"{ip}:{port}"],
+                    capture_output=True, text=True, timeout=10,
+                    creationflags=SUBPROCESS_FLAGS
+                )
+                if "connected" in result.stdout.lower():
+                    # Get Android version
+                    version_result = subprocess.run(
+                        [adb_exe, "-s", f"{ip}:{port}",
+                         "shell", "getprop", "ro.build.version.release"],
+                        capture_output=True, text=True, timeout=5,
+                        creationflags=SUBPROCESS_FLAGS
+                    )
+                    version = version_result.stdout.strip()
+
+                    # Get device model
+                    model_result = subprocess.run(
+                        [adb_exe, "-s", f"{ip}:{port}",
+                         "shell", "getprop", "ro.product.model"],
+                        capture_output=True, text=True, timeout=5,
+                        creationflags=SUBPROCESS_FLAGS
+                    )
+                    model = model_result.stdout.strip()
+
+                    return (ip, port, version, model, "Connected")
+            except Exception as e:
+                print(f"[DEBUG] Exception connecting to {ip}:{port} - {str(e)}")
+            return None
+
         def scan_thread():
             ip_range = self.ip_range_var.get()
             ports = [5555, 1206]
-            found_devices = []
+            found_ports = []
 
-            print(f"[DEBUG] Starting scan on {ip_range}.* with ports {ports}")
+            print(f"[DEBUG] Starting multithreaded scan on {ip_range}.* with ports {ports}")
 
-            for i in range(1, 255):
-                ip = f"{ip_range}.{i}"
-                for port in ports:
-                    try:
-                        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                        sock.settimeout(0.1)
-                        result = sock.connect_ex((ip, port))
-                        sock.close()
+            # Phase 1: Parallel port scanning (much faster)
+            ips_to_scan = [f"{ip_range}.{i}" for i in range(1, 255)]
 
-                        if result == 0:
-                            print(f"[DEBUG] Port open at {ip}:{port}")
-                            self.log(f"디바이스 발견: {ip}:{port}")
-                            device = AndroidDevice(ip, port)
-                            found_devices.append(device)
-                            print(f"[DEBUG] Device added to found_devices: {device}")
-                    except Exception as e:
-                        print(f"[DEBUG] Socket error at {ip}:{port} - {e}")
-                        pass
+            with ThreadPoolExecutor(max_workers=50) as executor:
+                futures = {executor.submit(scan_single_ip, ip, ports): ip for ip in ips_to_scan}
+                for future in as_completed(futures):
+                    results = future.result()
+                    for ip, port in results:
+                        print(f"[DEBUG] Port open at {ip}:{port}")
+                        self.root.after(0, lambda i=ip, p=port: self.log(f"디바이스 발견: {i}:{p}"))
+                        found_ports.append((ip, port))
 
-            print(f"[DEBUG] Port scan complete. Found {len(found_devices)} potential devices")
+            print(f"[DEBUG] Port scan complete. Found {len(found_ports)} potential devices")
 
-            # Connect to found devices and get info
+            # Phase 2: Connect to found devices (parallel ADB connections)
             adb_exe = str(self.adb_path) if self.adb_path.exists() else "adb"
 
-            for device in found_devices:
-                print(f"[DEBUG] Attempting to connect to {device.ip}:{device.port}")
-                try:
-                    # Try to connect
-                    result = subprocess.run(
-                        [adb_exe, "connect", f"{device.ip}:{device.port}"],
-                        capture_output=True, text=True, timeout=10,
-                        creationflags=SUBPROCESS_FLAGS
-                    )
-                    print(f"[DEBUG] ADB connect result: {result.stdout.strip()}")
-
-                    if "connected" in result.stdout.lower():
-                        device.status = "Connected"
-                        print(f"[DEBUG] Device {device.ip}:{device.port} connected successfully")
-
-                        # Get Android version
-                        version_result = subprocess.run(
-                            [adb_exe, "-s", f"{device.ip}:{device.port}",
-                             "shell", "getprop", "ro.build.version.release"],
-                            capture_output=True, text=True, timeout=5,
-                            creationflags=SUBPROCESS_FLAGS
-                        )
-                        device.version = version_result.stdout.strip()
-                        print(f"[DEBUG] Device version: {device.version}")
-
-                        # Get device model
-                        model_result = subprocess.run(
-                            [adb_exe, "-s", f"{device.ip}:{device.port}",
-                             "shell", "getprop", "ro.product.model"],
-                            capture_output=True, text=True, timeout=5,
-                            creationflags=SUBPROCESS_FLAGS
-                        )
-                        device.model = model_result.stdout.strip()
-                        print(f"[DEBUG] Device model: {device.model}")
-
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                futures = {executor.submit(connect_device, ip, port, adb_exe): (ip, port)
+                          for ip, port in found_ports}
+                for future in as_completed(futures):
+                    result = future.result()
+                    if result:
+                        ip, port, version, model, status = result
+                        device = AndroidDevice(ip, port)
+                        device.version = version
+                        device.model = model
+                        device.status = status
                         self.devices.append(device)
-                        print(f"[DEBUG] Device added to self.devices: {device}")
-                        print(f"[DEBUG] Total devices in self.devices: {len(self.devices)}")
-                        self.log(f"연결됨: {device}")
-                except Exception as e:
-                    print(f"[DEBUG] Exception connecting to {device.ip}:{device.port} - {str(e)}")
-                    self.log(f"연결 실패 {device.ip}:{device.port} - {str(e)}", "ERROR")
+                        print(f"[DEBUG] Device connected: {device}")
+                        self.root.after(0, lambda d=device: self.log(f"연결됨: {d}"))
 
             print(f"[DEBUG] All connections complete. Total devices: {len(self.devices)}")
-            print(f"[DEBUG] Devices list: {[str(d) for d in self.devices]}")
 
             # Update UI
-            print("[DEBUG] Scheduling UI update...")
-            self.root.after(0, self.update_device_list)
-            self.root.after(0, lambda: self.scan_progress.stop())
-            self.root.after(0, lambda: self.scan_btn.config(state=tk.NORMAL))
-            self.scanning = False
-            self.log(f"스캔 완료. 발견된 디바이스: {len(self.devices)}개")
+            def finish_scan():
+                self.update_device_list()
+                self.scan_progress.stop()
+                self.scan_btn.config(state=tk.NORMAL, text="네트워크 스캔")
+                self.detect_btn.config(state=tk.NORMAL)
+                self.update_button_states()
+                self.scanning = False
+                self.log(f"스캔 완료. 발견된 디바이스: {len(self.devices)}개")
+
+            self.root.after(0, finish_scan)
             print(f"[DEBUG] Scan thread complete")
 
         threading.Thread(target=scan_thread, daemon=True).start()
@@ -1670,8 +1690,46 @@ class RT1018InstallerGUI:
         self.root.destroy()
 
 
+def check_path_for_korean():
+    """Check if the current path contains Korean characters and warn user if so"""
+    import re
+
+    # Get the current script/executable path
+    if getattr(sys, 'frozen', False):
+        current_path = str(Path(sys.executable).parent)
+    else:
+        current_path = str(Path(__file__).parent)
+
+    # Korean character range: Hangul Syllables (AC00-D7AF), Hangul Jamo (1100-11FF),
+    # Hangul Compatibility Jamo (3130-318F), Hangul Jamo Extended-A/B
+    korean_pattern = re.compile(r'[\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F\uA960-\uA97F\uD7B0-\uD7FF]')
+
+    if korean_pattern.search(current_path):
+        # Create a simple warning dialog
+        root = tk.Tk()
+        root.withdraw()  # Hide the main window
+
+        message = (
+            "경고: 프로그램 경로에 한글이 포함되어 있습니다!\n\n"
+            f"현재 경로:\n{current_path}\n\n"
+            "한글 경로는 ADB 명령어 실행 시 오류를 발생시킬 수 있습니다.\n\n"
+            "해결 방법:\n"
+            "1. 이 프로그램 폴더를 C:\\ 또는 D:\\ 등 영문 경로로 이동하세요.\n"
+            "   예: C:\\RT1018Installer\\\n\n"
+            "2. 이동 후 프로그램을 다시 실행하세요.\n\n"
+            "프로그램을 종료합니다."
+        )
+
+        messagebox.showerror("경로 오류 - Path Error", message)
+        root.destroy()
+        sys.exit(1)
+
+
 def main():
     """Main entry point"""
+    # Check for Korean characters in path before starting
+    check_path_for_korean()
+
     root = tk.Tk()
     app = RT1018InstallerGUI(root)
     root.protocol("WM_DELETE_WINDOW", app.on_closing)
